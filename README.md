@@ -159,6 +159,14 @@ live recommendation. It bundles the current state — league format, your roster
 roster needs, top ~30 available by ADP, and recent picks — into one prompt and
 shows Claude's suggested pick plus alternatives.
 
+- **Draft plan** (the collapsible in that panel) is free text saved to
+  `localStorage` (key `sleeper_draft_plan`, shared across drafts). Put your
+  round targets, mid/late targets, and position tactics there — e.g. "Puka in
+  R1", "Kittle rounds 8–10", "no QB before R9", "2 WR + 2 RB by end of R4". It's
+  sent with every ask as strategic guidance; Claude follows it when it can and
+  flags a `PLAN:` line when it deviates. "Use template" drops in a starting
+  point.
+
 - **Set key** stores an Anthropic API key in this browser's `localStorage` only
   (key `sleeper_anthropic_key`). It is never committed, never in the deployed
   JS, and is sent only to `api.anthropic.com` (over HTTPS, with the

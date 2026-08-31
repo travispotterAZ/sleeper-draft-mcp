@@ -6,8 +6,28 @@
 // "AI pick suggestions" section for the threat model.
 
 const KEY_STORE = "sleeper_anthropic_key";
+const PLAN_STORE = "sleeper_draft_plan";
 const MODEL = "claude-sonnet-5"; // fast + cheap; swap to claude-opus-5 for deeper reasoning
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
+
+// A starter plan the user can drop in and edit. Free-text on purpose — Claude
+// reads it as strategic guidance, not a rigid script.
+export const PLAN_TEMPLATE = `Slot 4, 12-team half-PPR. Direction over absolutes — adapt to the board.
+
+ROUND TARGETS
+R1: Puka Nacua (WR); else best WR/RB available.
+R2-3: anchor RB + a WR.
+R4: whichever of RB2 / WR2 is thinner.
+R5: best player available; lean TE on value.
+
+MID / LATE TARGETS
+- George Kittle (TE) in rounds 8-10.
+- Jauan Jennings (WR), Jordan Mason (RB) as later upside picks.
+
+POSITION TACTICS
+- 2 WR and 2 RB established by the end of round 4.
+- No QB before round 9.
+- K and DEF only in the final 3 rounds.`;
 
 export function getKey() {
   try {
@@ -26,6 +46,21 @@ export function setKey(k) {
 }
 export function hasKey() {
   return getKey().length > 0;
+}
+export function getPlan() {
+  try {
+    return localStorage.getItem(PLAN_STORE) || "";
+  } catch {
+    return "";
+  }
+}
+export function setPlan(t) {
+  try {
+    if (t && t.trim()) localStorage.setItem(PLAN_STORE, t.trim());
+    else localStorage.removeItem(PLAN_STORE);
+  } catch {
+    /* private mode / quota */
+  }
 }
 export function maskKey() {
   const k = getKey();
@@ -93,15 +128,21 @@ ${fmtAvailable(p.available)}
 
 RECENT PICKS (most recent last)
 ${fmtRecent(p.recentPicks)}
-
+${p.plan ? `\nMY DRAFT PLAN (strategic guidance for my slot — a direction, not an absolute)\n${p.plan}\n` : ""}
 Recommend who I should take. Weigh roster construction, positional scarcity, ADP value, and the run of recent picks. Keep it short.
 
 Rules:
 - Recommend ONLY players from the TOP AVAILABLE PLAYERS list above. Never name a player who is not on that list.
-- Use the ADP rank exactly as given above; do not invent a rank.
+- Use the ADP rank exactly as given above; do not invent a rank.${
+    p.plan
+      ? "\n- Follow the draft plan when you reasonably can. Deviate only if a planned target is already gone or clearly better value has fallen — and say so in the PLAN line."
+      : ""
+  }
 
 Answer in exactly this shape:
-PICK: <player name> (<pos>) — one sentence why.
+PICK: <player name> (<pos>) — one sentence why.${
+    p.plan ? "\nPLAN: <one line — on track / behind on X / deviating because Y>" : ""
+  }
 ALTERNATIVES:
 - <player name> (<pos>) — a few words
 - <player name> (<pos>) — a few words
@@ -127,7 +168,7 @@ export async function askForPick(payload) {
         model: MODEL,
         max_tokens: 1024,
         system:
-          "You are an expert fantasy football draft advisor giving live, in-draft advice. Be decisive and concise. You may ONLY recommend players that appear in the TOP AVAILABLE PLAYERS list in the user's message — never name a player who is not on that list, and never invent a ranking.",
+          "You are an expert fantasy football draft advisor giving live, in-draft advice. Be decisive and concise. You may ONLY recommend players that appear in the TOP AVAILABLE PLAYERS list in the user's message — never name a player who is not on that list, and never invent a ranking. If the user provides a draft plan, treat it as strong strategic guidance: favor picks that advance it, but you may deviate when the board clearly dictates — say so briefly.",
         messages: [{ role: "user", content: buildPrompt(payload) }],
       }),
     });

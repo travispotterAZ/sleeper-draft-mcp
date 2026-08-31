@@ -435,6 +435,15 @@ function paintShell(S) {
               <button id="askClaudeBtn" class="primary">Ask Claude for a pick</button>
               <button id="advKeyBtn">Set key</button>
             </div>
+            <details class="plan" id="planBox">
+              <summary>Draft plan <span id="planState" class="muted"></span></summary>
+              <textarea id="planText" rows="10" spellcheck="false"
+                placeholder="Round targets, mid/late targets, position tactics… free text, treated as a direction not a script."></textarea>
+              <div class="advisor-actions">
+                <button id="planSave">Save plan</button>
+                <button id="planTemplate" type="button">Use template</button>
+              </div>
+            </details>
             <div id="advisorOut" class="advisor-out muted">
               Your Anthropic API key stays in this browser only. Set a spend cap on it.
             </div>
@@ -501,11 +510,37 @@ function refreshAdvKeyLabel() {
   }
 }
 
+function refreshPlanState() {
+  const el = document.getElementById("planState");
+  if (!el) return;
+  const p = advisor.getPlan();
+  el.textContent = p ? "✓ saved" : "none";
+}
+
 function wireAdvisor(S) {
   refreshAdvKeyLabel();
+  refreshPlanState();
   const keyBtn = document.getElementById("advKeyBtn");
   const askBtn = document.getElementById("askClaudeBtn");
   const out = document.getElementById("advisorOut");
+
+  const planText = document.getElementById("planText");
+  if (planText) {
+    planText.value = advisor.getPlan();
+    document.getElementById("planSave").addEventListener("click", () => {
+      advisor.setPlan(planText.value);
+      planText.value = advisor.getPlan();
+      refreshPlanState();
+      out.classList.add("muted");
+      out.textContent = advisor.getPlan()
+        ? "Plan saved — used on the next “Ask Claude”."
+        : "Plan cleared.";
+    });
+    document.getElementById("planTemplate").addEventListener("click", () => {
+      planText.value = advisor.PLAN_TEMPLATE;
+      planText.focus();
+    });
+  }
 
   keyBtn.addEventListener("click", () => {
     const current = advisor.hasKey() ? advisor.maskKey() : "";
@@ -667,6 +702,7 @@ function buildAdvisorPayload(S) {
     needs,
     available: available.slice(0, 30),
     recentPicks,
+    plan: advisor.getPlan(),
   };
 }
 
