@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sleeper-draft": {
+      "command": "node",
+      "args": ["C:/Users/tsjsp/sleeper-draft-mcp/dist/server.js"],
+      "env": {
+        "SLEEPER_CACHE_DIR": "C:/Users/tsjsp/sleeper-draft-mcp/cache"
+      }
+    }
+  }
+}

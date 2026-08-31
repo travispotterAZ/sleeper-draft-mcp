@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sleeper Draft Room</title>
+    <meta
+      name="description"
+      content="Paste a Sleeper draft ID and get a live draft room: picks, available players, whose turn it is, and roster needs. Uses Sleeper's public API, no login."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a href="#/" class="brand">🏈 <span>Sleeper Draft Room</span></a>
+      <div id="topnav" class="topnav"></div>
+    </header>
+    <main id="app" class="app"><p class="muted">Loading…</p></main>
+    <footer class="foot">
+      Unofficial. Uses Sleeper's public API — no login, nothing stored server-side.
+      <a id="srcLink" href="#" target="_blank" rel="noopener">Source</a>
+    </footer>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
