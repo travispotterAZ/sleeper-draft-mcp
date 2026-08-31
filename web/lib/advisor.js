@@ -42,7 +42,7 @@ function fmtRoster(rows) {
 }
 function fmtAvailable(rows) {
   return rows
-    .map((p, i) => `  ${i + 1}. ${p.name} (${p.pos}${p.team ? ", " + p.team : ""}, ADP rank ${p.rank ?? "—"})${p.inj ? " [" + p.inj + "]" : ""}`)
+    .map((p, i) => `  ${i + 1}. ${p.name} (${p.pos}${p.team ? ", " + p.team : ""}, ADP rank ${p.rank})${p.inj ? " [" + p.inj + "]" : ""}`)
     .join("\n");
 }
 function fmtRecent(rows) {
@@ -88,13 +88,17 @@ ${fmtRoster(p.myRoster)}
 MY ROSTER NEEDS
 ${fmtNeeds(p.needs)}
 
-TOP AVAILABLE PLAYERS (by Sleeper ADP rank, lower = earlier)
+TOP AVAILABLE PLAYERS (by Sleeper ADP rank, lower = earlier). These are the ONLY players you may recommend — every one is currently on an NFL roster:
 ${fmtAvailable(p.available)}
 
 RECENT PICKS (most recent last)
 ${fmtRecent(p.recentPicks)}
 
 Recommend who I should take. Weigh roster construction, positional scarcity, ADP value, and the run of recent picks. Keep it short.
+
+Rules:
+- Recommend ONLY players from the TOP AVAILABLE PLAYERS list above. Never name a player who is not on that list.
+- Use the ADP rank exactly as given above; do not invent a rank.
 
 Answer in exactly this shape:
 PICK: <player name> (<pos>) — one sentence why.
@@ -123,7 +127,7 @@ export async function askForPick(payload) {
         model: MODEL,
         max_tokens: 1024,
         system:
-          "You are an expert fantasy football draft advisor giving live, in-draft advice. Be decisive and concise. Only recommend players from the supplied available list.",
+          "You are an expert fantasy football draft advisor giving live, in-draft advice. Be decisive and concise. You may ONLY recommend players that appear in the TOP AVAILABLE PLAYERS list in the user's message — never name a player who is not on that list, and never invent a ranking.",
         messages: [{ role: "user", content: buildPrompt(payload) }],
       }),
     });

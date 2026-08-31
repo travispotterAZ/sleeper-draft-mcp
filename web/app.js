@@ -587,9 +587,13 @@ function buildAdvisorPayload(S) {
   for (const id in S.players) {
     if (drafted.has(id)) continue;
     const p = S.players[id];
+    // Advisor only sees real, draftable players: ranked AND on an active NFL
+    // roster. Sleeper's dictionary keeps retired/FA players (Todd Gurley, etc.),
+    // sometimes with a stale search_rank — exclude them so Claude can't suggest one.
+    if (p.r == null || p.r >= 3000 || !p.t) continue;
     available.push({ name: p.n, pos: p.p, team: p.t, rank: p.r, inj: p.inj });
   }
-  available.sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9));
+  available.sort((a, b) => a.rank - b.rank);
 
   const recentPicks = S.picks
     .slice()
@@ -638,19 +642,24 @@ function startPolling(S) {
 }
 
 async function refreshDynamic(S) {
-  try {
-    const [picks, draft] = await Promise.all([
-      api.getDraftPicks(S.draftId),
-      api.getDraft(S.draftId),
-    ]);
-    S.picks = (picks || []).slice().sort((a, b) => a.pick_no - b.pick_no);
-    S.draft = draft || S.draft;
-    S.lastUpdated = Date.now();
-  } catch (ex) {
+  // Settle independently: a flaky /draft call shouldn't wipe out a good /picks
+  // result (or vice-versa) and make the room "jump" between states.
+  const [picksR, draftR] = await Promise.allSettled([
+    api.getDraftPicks(S.draftId),
+    api.getDraft(S.draftId),
+  ]);
+  if (picksR.status === "rejected" && draftR.status === "rejected") {
     const u = document.getElementById("updated");
-    if (u) u.textContent = `⚠ ${ex.message || ex}`;
+    if (u) u.textContent = `⚠ ${picksR.reason?.message || picksR.reason}`;
     return;
   }
+  if (picksR.status === "fulfilled" && Array.isArray(picksR.value)) {
+    S.picks = picksR.value.slice().sort((a, b) => a.pick_no - b.pick_no);
+  }
+  if (draftR.status === "fulfilled" && draftR.value) {
+    S.draft = draftR.value;
+  }
+  S.lastUpdated = Date.now();
   renderClock(S);
   renderAvailable(S);
   renderPicks(S);
