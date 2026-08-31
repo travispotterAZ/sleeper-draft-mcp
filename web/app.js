@@ -16,7 +16,7 @@ document.getElementById("srcLink").href = REPO_URL;
 
 const app = document.getElementById("app");
 const topnav = document.getElementById("topnav");
-const POLL_MS = 10_000;
+const POLL_MS = 6_000;
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 const esc = (s) =>
@@ -677,39 +677,51 @@ function startPolling(S) {
 }
 
 async function refreshDynamic(S) {
-  // Settle independently: a flaky /draft call shouldn't wipe out a good /picks
-  // result (or vice-versa) and make the room "jump" between states.
-  const [picksR, draftR] = await Promise.allSettled([
-    api.getDraftPicks(S.draftId),
-    api.getDraft(S.draftId),
-  ]);
-  if (picksR.status === "rejected" && draftR.status === "rejected") {
-    const u = document.getElementById("updated");
-    if (u) u.textContent = `⚠ ${picksR.reason?.message || picksR.reason}`;
-    return;
-  }
-  if (picksR.status === "fulfilled" && Array.isArray(picksR.value)) {
-    S.picks = picksR.value.slice().sort((a, b) => a.pick_no - b.pick_no);
-  }
-  if (draftR.status === "fulfilled" && draftR.value) {
-    S.draft = draftR.value;
-  }
-  S.lastUpdated = Date.now();
-  renderClock(S);
-  renderAvailable(S);
-  renderPicks(S);
-  renderNeeds(S);
-  if (S.showBoard) renderBoard(S);
-  const u = document.getElementById("updated");
-  if (u) {
-    const badge = document.querySelector(".dhead .badge");
-    if (badge) {
-      badge.className =
-        "badge " +
-        (S.draft.status === "drafting" ? "live" : S.draft.status === "complete" ? "done" : "");
-      badge.textContent = S.draft.status;
+  if (S.refreshing) return; // don't stack overlapping polls / button mashes
+  S.refreshing = true;
+  try {
+    // Settle independently: a flaky /draft call shouldn't wipe out a good /picks
+    // result (or vice-versa) and make the room "jump" between states.
+    const [picksR, draftR] = await Promise.allSettled([
+      api.getDraftPicks(S.draftId),
+      api.getDraft(S.draftId),
+    ]);
+    if (picksR.status === "rejected" && draftR.status === "rejected") {
+      const u = document.getElementById("updated");
+      if (u) u.textContent = `⚠ ${picksR.reason?.message || picksR.reason}`;
+      return;
     }
-    u.textContent = `updated ${new Date(S.lastUpdated).toLocaleTimeString()}`;
+    if (draftR.status === "fulfilled" && draftR.value) {
+      S.draft = draftR.value;
+    }
+    if (picksR.status === "fulfilled" && Array.isArray(picksR.value)) {
+      const next = picksR.value.slice().sort((a, b) => a.pick_no - b.pick_no);
+      // Picks only ever grow during a live draft. If a poll returns fewer
+      // (usually a stale/empty CDN cache), keep what we have instead of
+      // flickering the board back — unless the draft genuinely reset.
+      if (next.length >= S.picks.length || S.draft.status !== "drafting") {
+        S.picks = next;
+      }
+    }
+    S.lastUpdated = Date.now();
+    renderClock(S);
+    renderAvailable(S);
+    renderPicks(S);
+    renderNeeds(S);
+    if (S.showBoard) renderBoard(S);
+    const u = document.getElementById("updated");
+    if (u) {
+      const badge = document.querySelector(".dhead .badge");
+      if (badge) {
+        badge.className =
+          "badge " +
+          (S.draft.status === "drafting" ? "live" : S.draft.status === "complete" ? "done" : "");
+        badge.textContent = S.draft.status;
+      }
+      u.textContent = `updated ${new Date(S.lastUpdated).toLocaleTimeString()}`;
+    }
+  } finally {
+    S.refreshing = false;
   }
 }
 

@@ -4,10 +4,14 @@
 
 const BASE = "https://api.sleeper.app/v1";
 
-async function j(path) {
+async function j(path, { bust = false } = {}) {
+  // `bust` appends a throwaway query param so Sleeper's CDN edge cache can't
+  // hand back a stale (or empty, pre-draft) response to a live poll.
+  const url =
+    BASE + path + (bust ? (path.includes("?") ? "&" : "?") + "_t=" + Date.now() : "");
   let res;
   try {
-    res = await fetch(BASE + path, { headers: { accept: "application/json" } });
+    res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
   } catch (err) {
     throw new Error(`Network error calling Sleeper (${path}): ${err.message}`);
   }
@@ -30,6 +34,6 @@ export const getLeague = (id) => j(`/league/${id}`);
 export const getLeagueDrafts = (id) => j(`/league/${id}/drafts`);
 export const getLeagueUsers = (id) => j(`/league/${id}/users`);
 export const getLeagueRosters = (id) => j(`/league/${id}/rosters`);
-export const getDraft = (id) => j(`/draft/${id}`);
-export const getDraftPicks = (id) => j(`/draft/${id}/picks`);
+export const getDraft = (id) => j(`/draft/${id}`, { bust: true });
+export const getDraftPicks = (id) => j(`/draft/${id}/picks`, { bust: true });
 export const getAllPlayers = () => j(`/players/nfl`);

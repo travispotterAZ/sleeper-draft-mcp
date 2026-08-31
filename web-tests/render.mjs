@@ -48,7 +48,8 @@ const playersDict = {
 };
 
 function fakeFetch(url) {
-  const path = String(url).replace("https://api.sleeper.app/v1", "");
+  // strip the cache-busting ?_t=… the client adds to poll requests
+  const path = String(url).replace("https://api.sleeper.app/v1", "").replace(/\?.*$/, "");
   const body =
     path === "/draft/TESTDRAFT" ? draft :
     path === "/draft/TESTDRAFT/picks" ? picks :

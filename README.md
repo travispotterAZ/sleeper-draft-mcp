@@ -146,7 +146,8 @@ step). It calls the Sleeper API straight from the browser — Sleeper sends
   - **Your roster & needs** — counts by position vs. the league's required
     starters (FLEX/SUPER_FLEX/REC_FLEX aware).
   - **Draft board** — toggleable snake-aware grid, current pick outlined.
-  - **auto-refresh** every 10s (toggle), plus a manual refresh.
+  - **auto-refresh** every 6s (toggle), plus a manual refresh. Poll requests are
+    cache-busted so Sleeper's CDN can't serve a stale/empty pick list.
 - Player dictionary (~5 MB) is fetched once, trimmed to fantasy-relevant players
   (~tens of KB), and cached in `localStorage` for 24h. "↻ players" forces a
   refresh. "You are" and recent drafts also persist in `localStorage`.
