@@ -287,7 +287,9 @@ async function bootstrap(S) {
     }
   }
 
-  // Team names + required-starter slots need the league (mock drafts have none).
+  // Required-starter slots normally come from the league. Mock drafts have no
+  // league, but Sleeper still puts the slot counts on the draft's own settings —
+  // fall back to those so roster needs (and the advisor) work for mocks too.
   let users = [],
     rosters = [];
   S.rosterPositions = null;
@@ -301,6 +303,7 @@ async function bootstrap(S) {
     if (lr.status === "fulfilled") rosters = lr.value || [];
     if (lg.status === "fulfilled") S.rosterPositions = lg.value?.roster_positions || null;
   }
+  if (!S.rosterPositions) S.rosterPositions = rosterPositionsFromDraft(draft.settings);
   const userById = new Map(users.map((u) => [u.user_id, u]));
   const nameForUser = (uid) => {
     const u = userById.get(uid);
@@ -326,6 +329,38 @@ async function bootstrap(S) {
     S.draftId,
     draft.metadata?.name || `Draft ${S.draftId} (${draft.type})`,
   );
+}
+
+// Rebuild a league-style roster_positions array from a draft's own slot counts.
+// Sleeper draft settings use keys like slots_qb / slots_flex / slots_super_flex / slots_bn.
+const DRAFT_SLOT_TOKENS = {
+  slots_qb: "QB",
+  slots_rb: "RB",
+  slots_wr: "WR",
+  slots_te: "TE",
+  slots_k: "K",
+  slots_def: "DEF",
+  slots_dl: "DL",
+  slots_lb: "LB",
+  slots_db: "DB",
+  slots_flex: "FLEX",
+  slots_wrrb_flex: "WRRB_FLEX",
+  slots_wr_rb_flex: "WRRB_FLEX",
+  slots_rec_flex: "REC_FLEX",
+  slots_super_flex: "SUPER_FLEX",
+  slots_idp_flex: "IDP_FLEX",
+  slots_bn: "BN",
+  slots_ir: "IR",
+  slots_taxi: "TAXI",
+};
+function rosterPositionsFromDraft(settings) {
+  if (!settings) return null;
+  const out = [];
+  for (const [key, token] of Object.entries(DRAFT_SLOT_TOKENS)) {
+    const n = Number(settings[key]) || 0;
+    for (let i = 0; i < n; i++) out.push(token);
+  }
+  return out.length ? out : null;
 }
 
 // ---------------------------------------------------------------- shell / static parts
