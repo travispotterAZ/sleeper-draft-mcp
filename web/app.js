@@ -653,7 +653,7 @@ function buildAdvisorPayload(S) {
     : null;
 
   const drafted = draftedSet(S);
-  const available = [];
+  const pool = [];
   for (const id in S.players) {
     if (drafted.has(id)) continue;
     const p = S.players[id];
@@ -661,9 +661,28 @@ function buildAdvisorPayload(S) {
     // roster. Sleeper's dictionary keeps retired/FA players (Todd Gurley, etc.),
     // sometimes with a stale search_rank — exclude them so Claude can't suggest one.
     if (p.r == null || p.r >= 3000 || !p.t) continue;
-    available.push({ name: p.n, pos: p.p, team: p.t, rank: p.r, inj: p.inj });
+    pool.push({ name: p.n, pos: p.p, team: p.t, rank: p.r, inj: p.inj });
   }
-  available.sort((a, b) => a.rank - b.rank);
+  pool.sort((a, b) => a.rank - b.rank);
+
+  // Candidate pool = top N by ADP PLUS any still-available player named in the
+  // plan (so late-round targets like a rookie RB are actually pickable, not
+  // filtered out for being ADP ~120). Mark the planned ones.
+  const TOP_N = 50;
+  const planText = advisor.getPlan().toLowerCase();
+  const available = pool.slice(0, TOP_N);
+  const inList = new Set(available.map((p) => p.name));
+  if (planText) {
+    for (const p of pool.slice(TOP_N)) {
+      if (!inList.has(p.name) && planText.includes(p.name.toLowerCase())) {
+        available.push(p);
+        inList.add(p.name);
+      }
+    }
+    for (const p of available) {
+      if (planText.includes(p.name.toLowerCase())) p.planned = true;
+    }
+  }
 
   const recentPicks = S.picks
     .slice()
@@ -700,7 +719,7 @@ function buildAdvisorPayload(S) {
     },
     myRoster: mine,
     needs,
-    available: available.slice(0, 30),
+    available,
     recentPicks,
     plan: advisor.getPlan(),
   };

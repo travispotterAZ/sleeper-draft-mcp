@@ -22,7 +22,13 @@ R5: best player available; lean TE on value.
 
 MID / LATE TARGETS
 - George Kittle (TE) in rounds 8-10.
-- Jauan Jennings (WR), Jordan Mason (RB) as later upside picks.
+- Jadarian Price (RB, SEA), MarShawn Lloyd (RB, GB), Jordan Mason (RB) as
+  later-round upside — starting jobs / clear paths to touches.
+
+PICK CRITERIA
+- Draft for team fit and upside, not Sleeper's ADP. A lower-ranked player who
+  fills a need or has a clearer path to touches beats a higher-ranked redundant
+  piece.
 
 POSITION TACTICS
 - 2 WR and 2 RB established by the end of round 4.
@@ -77,7 +83,10 @@ function fmtRoster(rows) {
 }
 function fmtAvailable(rows) {
   return rows
-    .map((p, i) => `  ${i + 1}. ${p.name} (${p.pos}${p.team ? ", " + p.team : ""}, ADP rank ${p.rank})${p.inj ? " [" + p.inj + "]" : ""}`)
+    .map(
+      (p) =>
+        `  - ${p.name} (${p.pos}${p.team ? ", " + p.team : ""}) · ADP rank ${p.rank}${p.inj ? ` · ${p.inj}` : ""}${p.planned ? "  <- named in my plan" : ""}`,
+    )
     .join("\n");
 }
 function fmtRecent(rows) {
@@ -123,17 +132,19 @@ ${fmtRoster(p.myRoster)}
 MY ROSTER NEEDS
 ${fmtNeeds(p.needs)}
 
-TOP AVAILABLE PLAYERS (by Sleeper ADP rank, lower = earlier). These are the ONLY players you may recommend — every one is currently on an NFL roster:
+AVAILABLE PLAYERS — this is the candidate pool. The ADP rank is shown for reference only; it is NOT a recommended pick order. You may only recommend a player who appears in this list:
 ${fmtAvailable(p.available)}
 
 RECENT PICKS (most recent last)
 ${fmtRecent(p.recentPicks)}
 ${p.plan ? `\nMY DRAFT PLAN (strategic guidance for my slot — a direction, not an absolute)\n${p.plan}\n` : ""}
-Recommend who I should take. Weigh roster construction, positional scarcity, ADP value, and the run of recent picks. Keep it short.
+Recommend the player who is best FOR MY TEAM right now. Keep it short.
 
 Rules:
-- Recommend ONLY players from the TOP AVAILABLE PLAYERS list above. Never name a player who is not on that list.
-- Use the ADP rank exactly as given above; do not invent a rank.${
+- Draft for team fit, not name value. Base the pick on: my roster needs and construction, positional scarcity and tier cliffs, a player's role/upside/path to touches, bye-week fit, the run of recent picks${p.plan ? ", and my draft plan" : ""}.
+- ADP rank is only for judging whether a player will still be available at my next pick — a tiebreaker and a sanity check, never the deciding factor.
+- If a lower-ADP player is the better roster fit, recommend that player and say why in one line. Do NOT default to the highest-ranked name.
+- Recommend ONLY a player from the AVAILABLE PLAYERS list above. Never name a player who is not on it, and do not invent a rank.${
     p.plan
       ? "\n- Follow the draft plan when you reasonably can. Deviate only if a planned target is already gone or clearly better value has fallen — and say so in the PLAN line."
       : ""
@@ -168,7 +179,7 @@ export async function askForPick(payload) {
         model: MODEL,
         max_tokens: 1024,
         system:
-          "You are an expert fantasy football draft advisor giving live, in-draft advice. Be decisive and concise. You may ONLY recommend players that appear in the TOP AVAILABLE PLAYERS list in the user's message — never name a player who is not on that list, and never invent a ranking. If the user provides a draft plan, treat it as strong strategic guidance: favor picks that advance it, but you may deviate when the board clearly dictates — say so briefly.",
+          "You are an expert fantasy football draft advisor giving live, in-draft advice. Recommend the player who best fits the user's roster, situation, and plan — NOT simply the highest-ranked available name. Sleeper ADP is context for when a player will be gone, not the decision. Be decisive and concise. Only recommend players that appear in the AVAILABLE PLAYERS list in the user's message; never invent a player or a ranking. If the user provides a draft plan, treat it as strong strategic guidance: favor picks that advance it, but you may deviate when the board clearly dictates — say so briefly.",
         messages: [{ role: "user", content: buildPrompt(payload) }],
       }),
     });
