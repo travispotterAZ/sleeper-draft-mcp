@@ -606,7 +606,7 @@ function buildAdvisorPayload(S) {
     mySlot == null ? null : picksUntilSlot(mySlot, made, S.rounds, S.opts);
 
   const mine = S.picks
-    .filter((p) => p.roster_id === S.youRoster)
+    .filter((p) => isMyPick(S, p))
     .map((pk) => {
       const info = playerName(S, pk);
       return { round: pk.round, slot: pk.draft_slot, name: info.name, pos: info.pos, team: info.team };
@@ -717,6 +717,15 @@ function draftedSet(S) {
   return new Set(S.picks.map((p) => p.player_id));
 }
 
+// Is this pick one of mine? Mock drafts often leave pick.roster_id null (there's
+// no league / rosters), so fall back to matching my draft slot.
+function isMyPick(S, pick) {
+  if (S.youRoster == null) return false;
+  if (pick.roster_id != null && pick.roster_id === S.youRoster) return true;
+  const mySlot = S.rosterToSlot.get(S.youRoster);
+  return mySlot != null && pick.draft_slot === mySlot;
+}
+
 function renderClock(S) {
   const box = document.getElementById("clock");
   if (!box) return;
@@ -825,7 +834,7 @@ function renderPicks(S) {
       .map((pk) => {
         const info = playerName(S, pk);
         const team = pk.roster_id != null ? S.teamByRoster.get(pk.roster_id) : null;
-        const mine = S.youRoster != null && pk.roster_id === S.youRoster;
+        const mine = isMyPick(S, pk);
         return `<li${mine ? ' style="background:color-mix(in srgb,var(--good) 12%,transparent)"' : ""}>
           <span class="pick-no">${pk.round}.${String(pk.draft_slot).padStart(2, "0")}</span>
           <span class="pname">${esc(info.name)}</span>
@@ -845,7 +854,7 @@ function renderNeeds(S) {
     return;
   }
   const rosterPositions = S.rosterPositions;
-  const mine = S.picks.filter((p) => p.roster_id === S.youRoster);
+  const mine = S.picks.filter((p) => isMyPick(S, p));
   const myPositions = mine.map((p) => playerName(S, p).pos).filter(Boolean);
 
   const counts = {};
