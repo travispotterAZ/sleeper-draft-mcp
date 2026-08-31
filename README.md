@@ -151,6 +151,27 @@ step). It calls the Sleeper API straight from the browser — Sleeper sends
   (~tens of KB), and cached in `localStorage` for 24h. "↻ players" forces a
   refresh. "You are" and recent drafts also persist in `localStorage`.
 
+### AI pick suggestions (optional, bring-your-own-key)
+
+The **"Claude's pick"** panel in the draft room can call the Anthropic API for a
+live recommendation. It bundles the current state — league format, your roster,
+roster needs, top ~30 available by ADP, and recent picks — into one prompt and
+shows Claude's suggested pick plus alternatives.
+
+- **Set key** stores an Anthropic API key in this browser's `localStorage` only
+  (key `sleeper_anthropic_key`). It is never committed, never in the deployed
+  JS, and is sent only to `api.anthropic.com` (over HTTPS, with the
+  `anthropic-dangerous-direct-browser-access` header). Clearing the field
+  removes it.
+- **Put a spend cap on the key.** Create a dedicated key in the Anthropic
+  console with a low monthly limit and delete it after draft season — that caps
+  the worst case if the browser it's stored in is ever compromised.
+- The [CSP header](./web/index.html) restricts outbound requests to Sleeper and
+  Anthropic, so a stray/injected script can't exfiltrate the key elsewhere.
+- Model is `claude-sonnet-5` (fast, ~pennies per draft); change `MODEL` in
+  [`web/lib/advisor.js`](./web/lib/advisor.js) to `claude-opus-5` for deeper
+  reasoning. Auction drafts aren't supported by the advisor.
+
 ### Run it locally
 
 ```bash

@@ -8,6 +8,7 @@ import {
   picksForSlot,
   picksUntilSlot,
 } from "./lib/snake.js";
+import * as advisor from "./lib/advisor.js";
 
 // Update this to your repo once pushed.
 const REPO_URL = "https://github.com/tsjsp1/sleeper-draft-mcp";
@@ -392,6 +393,18 @@ function paintShell(S) {
           <h2>Your roster &amp; needs</h2>
           <div id="needs" class="needs"></div>
         </section>
+        <section class="panel" style="margin-top:16px">
+          <h2>Claude's pick <span id="advKey" class="muted"></span></h2>
+          <div class="advisor" id="advisor">
+            <div class="advisor-actions">
+              <button id="askClaudeBtn" class="primary">Ask Claude for a pick</button>
+              <button id="advKeyBtn">Set key</button>
+            </div>
+            <div id="advisorOut" class="advisor-out muted">
+              Your Anthropic API key stays in this browser only. Set a spend cap on it.
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -435,6 +448,187 @@ function paintShell(S) {
     S.search = e.target.value;
     renderAvailable(S);
   });
+
+  wireAdvisor(S);
+}
+
+// ---------------------------------------------------------------- advisor (optional Claude call)
+function refreshAdvKeyLabel() {
+  const el = document.getElementById("advKey");
+  const btn = document.getElementById("advKeyBtn");
+  if (!el || !btn) return;
+  if (advisor.hasKey()) {
+    el.textContent = `key ${advisor.maskKey()}`;
+    btn.textContent = "Change / clear key";
+  } else {
+    el.textContent = "no key set";
+    btn.textContent = "Set key";
+  }
+}
+
+function wireAdvisor(S) {
+  refreshAdvKeyLabel();
+  const keyBtn = document.getElementById("advKeyBtn");
+  const askBtn = document.getElementById("askClaudeBtn");
+  const out = document.getElementById("advisorOut");
+
+  keyBtn.addEventListener("click", () => {
+    const current = advisor.hasKey() ? advisor.maskKey() : "";
+    const entered = window.prompt(
+      "Anthropic API key (stored only in this browser's localStorage).\nLeave blank and OK to clear it." +
+        (current ? `\n\nCurrent: ${current}` : ""),
+      "",
+    );
+    if (entered === null) return; // cancelled
+    advisor.setKey(entered);
+    refreshAdvKeyLabel();
+    out.classList.add("muted");
+    out.textContent = advisor.hasKey() ? "Key saved in this browser." : "Key cleared.";
+  });
+
+  askBtn.addEventListener("click", async () => {
+    if (!advisor.hasKey()) {
+      out.classList.remove("muted");
+      out.textContent = "Set your Anthropic API key first (button above).";
+      return;
+    }
+    if (S.youRoster == null) {
+      out.classList.remove("muted");
+      out.textContent = "Pick your team in the “You” dropdown first.";
+      return;
+    }
+    if (S.draft.type === "auction") {
+      out.classList.remove("muted");
+      out.textContent = "Auction drafts aren't supported by the advisor.";
+      return;
+    }
+    const payload = buildAdvisorPayload(S);
+    if (!payload.available.length) {
+      out.classList.remove("muted");
+      out.textContent = "No available players loaded yet — try Refresh now.";
+      return;
+    }
+    askBtn.disabled = true;
+    askBtn.innerHTML = '<span class="spin"></span> asking…';
+    out.classList.add("muted");
+    out.textContent = "Thinking…";
+    try {
+      const text = await advisor.askForPick(payload);
+      out.classList.remove("muted");
+      out.innerHTML = renderAdvisorText(text);
+    } catch (ex) {
+      out.classList.remove("muted");
+      out.innerHTML = `<span class="adv-err">${esc(ex.message || ex)}</span>`;
+    } finally {
+      askBtn.disabled = false;
+      askBtn.textContent = "Ask Claude for a pick";
+    }
+  });
+}
+
+function renderAdvisorText(text) {
+  // Plain text -> minimal HTML: escape everything, bold "PICK:" / "ALTERNATIVES:",
+  // turn "- " lines into a list.
+  const lines = String(text).split(/\r?\n/);
+  let html = "";
+  let inList = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      if (inList) {
+        html += "</ul>";
+        inList = false;
+      }
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      if (!inList) {
+        html += "<ul>";
+        inList = true;
+      }
+      html += `<li>${esc(line.replace(/^[-*]\s+/, ""))}</li>`;
+      continue;
+    }
+    if (inList) {
+      html += "</ul>";
+      inList = false;
+    }
+    const m = line.match(/^([A-Z][A-Z ]{2,}:)\s*(.*)$/);
+    if (m) html += `<p><b>${esc(m[1])}</b> ${esc(m[2])}</p>`;
+    else html += `<p>${esc(line)}</p>`;
+  }
+  if (inList) html += "</ul>";
+  return html || esc(text);
+}
+
+function buildAdvisorPayload(S) {
+  const made = S.picks.length;
+  const total = S.numTeams * S.rounds;
+  const pos = currentPosition(made, S.opts);
+  const mySlot = S.rosterToSlot.get(S.youRoster);
+  const isYou = mySlot != null && pos.slot === mySlot;
+  const picksUntilYou =
+    mySlot == null ? null : picksUntilSlot(mySlot, made, S.rounds, S.opts);
+
+  const mine = S.picks
+    .filter((p) => p.roster_id === S.youRoster)
+    .map((pk) => {
+      const info = playerName(S, pk);
+      return { round: pk.round, slot: pk.draft_slot, name: info.name, pos: info.pos, team: info.team };
+    });
+
+  const myPositions = mine.map((r) => r.pos).filter(Boolean);
+  const needs = S.rosterPositions
+    ? computeRosterNeeds(S.rosterPositions, myPositions)
+    : null;
+
+  const drafted = draftedSet(S);
+  const available = [];
+  for (const id in S.players) {
+    if (drafted.has(id)) continue;
+    const p = S.players[id];
+    available.push({ name: p.n, pos: p.p, team: p.t, rank: p.r, inj: p.inj });
+  }
+  available.sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9));
+
+  const recentPicks = S.picks
+    .slice()
+    .reverse()
+    .slice(0, 15)
+    .reverse()
+    .map((pk) => {
+      const info = playerName(S, pk);
+      return {
+        round: pk.round,
+        slot: pk.draft_slot,
+        name: info.name,
+        pos: info.pos,
+        byTeam: pk.roster_id != null ? S.teamByRoster.get(pk.roster_id) : null,
+      };
+    });
+
+  return {
+    format: {
+      teams: S.numTeams,
+      rounds: S.rounds,
+      type: S.opts.type,
+      reversalRound: S.opts.reversalRound,
+      rosterPositions: S.rosterPositions,
+      scoring: S.draft.metadata?.scoring_type || S.draft.settings?.scoring_type || null,
+    },
+    you: { team: S.teamBySlot.get(mySlot) || `Slot ${mySlot}`, slot: mySlot, rosterId: S.youRoster },
+    onClock: {
+      round: pos.round,
+      pickInRound: pos.pickInRound,
+      overallPick: pos.overallPick,
+      isYou,
+      picksUntilYou,
+    },
+    myRoster: mine,
+    needs,
+    available: available.slice(0, 30),
+    recentPicks,
+  };
 }
 
 // ---------------------------------------------------------------- polling + dynamic render

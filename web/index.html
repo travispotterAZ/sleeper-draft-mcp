@@ -3,6 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Lock outbound requests to Sleeper + Anthropic so a stray script can't exfiltrate a stored API key. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src https://api.sleeper.app https://api.anthropic.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'self'"
+    />
     <title>Sleeper Draft Room</title>
     <meta
       name="description"

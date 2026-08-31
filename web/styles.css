@@ -462,6 +462,39 @@ table.board td.mine {
 .cell-meta {
   color: var(--muted);
 }
+/* ---------- advisor ---------- */
+.advisor {
+  padding: 12px 14px;
+}
+.advisor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.advisor-out {
+  font-size: 14px;
+}
+.advisor-out p {
+  margin: 6px 0;
+}
+.advisor-out ul {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.advisor-out li {
+  margin: 3px 0;
+}
+.advisor-out .adv-err {
+  color: var(--bad);
+}
+#advKey {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .spin {
   display: inline-block;
   width: 12px;
