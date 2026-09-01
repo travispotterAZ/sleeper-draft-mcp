@@ -306,6 +306,21 @@ select:focus {
   border-color: var(--accent);
   color: #fff;
 }
+.chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.left-toggle {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.left-toggle .chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .filters input {
   flex: 1;
   min-width: 120px;

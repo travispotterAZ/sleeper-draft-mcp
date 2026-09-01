@@ -248,6 +248,7 @@ function renderDraftRoom(draftId) {
     youRoster: loadYou(draftId),
     filterPos: "ALL",
     search: "",
+    leftView: "avail", // "avail" | "mine" — left panel toggle
     showBoard: false,
     auto: true,
     lastUpdated: 0,
@@ -468,7 +469,13 @@ function paintShell(S) {
 
     <div class="grid2">
       <section class="panel">
-        <h2 id="leftTitle">Available <span id="availCount" class="muted"></span></h2>
+        <h2 id="leftTitle">
+          <span id="leftTitleText">Available</span> <span id="availCount" class="muted"></span>
+          <span class="left-toggle" id="leftToggle">
+            <button class="chip active" data-view="avail">Available</button>
+            <button class="chip" data-view="mine">My picks</button>
+          </span>
+        </h2>
         <div class="filters" id="availFilters">
           ${["ALL", ...POSITIONS]
             .map(
@@ -545,6 +552,13 @@ function paintShell(S) {
     }
   });
   document.getElementById("refreshBtn").addEventListener("click", () => refreshDynamic(S));
+
+  document.getElementById("leftToggle").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-view]");
+    if (!b || b.disabled) return;
+    S.leftView = b.dataset.view;
+    renderLeftPanel(S);
+  });
 
   const filters = app.querySelector(".filters");
   filters.addEventListener("click", (e) => {
@@ -913,23 +927,35 @@ function renderClock(S) {
     ${youLine}`;
 }
 
-// Left panel is either the "Available" pool or — once you've picked your team —
-// "Your picks" in draft order. Same slot, swapped contents.
+// Left panel shows the "Available" pool or "Your picks" in draft order, chosen
+// by the header toggle. "My picks" needs a selected team, so it falls back to
+// "Available" until you pick one.
 function renderLeftPanel(S) {
-  const title = document.getElementById("leftTitle");
+  const titleText = document.getElementById("leftTitleText");
   const filters = document.getElementById("availFilters");
   const availUl = document.getElementById("availList");
   const mineUl = document.getElementById("myPicksList");
-  if (!title || !availUl || !mineUl) return;
+  const toggle = document.getElementById("leftToggle");
+  if (!titleText || !availUl || !mineUl) return;
 
-  const showMine = S.youRoster != null;
-  filters.style.display = showMine ? "none" : "";
-  availUl.style.display = showMine ? "none" : "";
-  mineUl.style.display = showMine ? "" : "none";
-  // firstChild is the bare text node before the <span id="availCount">.
-  title.firstChild.textContent = showMine ? "Your picks " : "Available ";
+  const hasTeam = S.youRoster != null;
+  const view = S.leftView === "mine" && hasTeam ? "mine" : "avail";
+  const mine = view === "mine";
 
-  if (showMine) renderMyPicks(S);
+  if (toggle) {
+    const mineBtn = toggle.querySelector('[data-view="mine"]');
+    mineBtn.disabled = !hasTeam;
+    mineBtn.title = hasTeam ? "" : "Pick your team above first";
+    toggle.querySelectorAll("[data-view]").forEach((b) =>
+      b.classList.toggle("active", b.dataset.view === view),
+    );
+  }
+  filters.style.display = mine ? "none" : "";
+  availUl.style.display = mine ? "none" : "";
+  mineUl.style.display = mine ? "" : "none";
+  titleText.textContent = mine ? "Your picks" : "Available";
+
+  if (mine) renderMyPicks(S);
   else renderAvailable(S);
 }
 
@@ -1020,7 +1046,12 @@ function renderPicks(S) {
           <span class="pick-team">${esc(team || "")}</span>
         </li>`;
       })
-      .join("") || `<li class="muted" style="padding:14px">No picks yet.</li>`;
+      .join("") || `<li class="muted" style="padding:14px">${
+        S.platform === "espn" && S.draft?.status === "drafting"
+          ? "No picks published yet. ESPN's read API can lag a live mock badly " +
+            "(often nothing until the draft completes) — this board fills in when it appears."
+          : "No picks yet."
+      }</li>`;
 }
 
 function renderNeeds(S) {
