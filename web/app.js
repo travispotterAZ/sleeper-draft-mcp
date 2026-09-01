@@ -1,4 +1,5 @@
 import * as api from "./lib/sleeper.js";
+import * as espn from "./lib/espn.js";
 import { loadPlayers, clearPlayerCache } from "./lib/players.js";
 import { computeRosterNeeds } from "./lib/needs.js";
 import {
@@ -58,7 +59,7 @@ function router() {
   teardown();
   topnav.innerHTML = "";
   const h = location.hash.replace(/^#/, "") || "/";
-  const m = h.match(/^\/draft\/([A-Za-z0-9]+)/);
+  const m = h.match(/^\/draft\/([A-Za-z0-9_]+)/);
   if (m) renderDraftRoom(m[1]);
   else renderHome();
 }
@@ -71,17 +72,19 @@ function renderHome() {
   const recents = recentDrafts();
   app.innerHTML = `
     <div class="home">
-      <h1>Live Sleeper draft room</h1>
-      <p class="lead">Paste a draft ID, league ID, or Sleeper username.</p>
+      <h1>Live draft room</h1>
+      <p class="lead">Paste a Sleeper draft ID, league ID or username — or an ESPN draft link.</p>
       <form id="goForm">
         <input id="goInput" autocomplete="off" autofocus
-          placeholder="e.g. 1005704... or a sleeper.com/draft/… link" />
+          placeholder="sleeper.com/draft/… · fantasy.espn.com/football/draft?leagueId=… · or an ID" />
         <button class="primary" type="submit">Open</button>
       </form>
       <div class="error" id="homeErr"></div>
       <p class="hint">
-        The draft ID is the number in a Sleeper draft board URL
-        (<code>sleeper.com/draft/nfl/<b>ID</b></code>). A league ID or username works too.
+        Sleeper: the number in a draft board URL
+        (<code>sleeper.com/draft/nfl/<b>ID</b></code>); a league ID or username works too.
+        ESPN: paste the full <code>fantasy.espn.com/football/draft?leagueId=…</code> link
+        (mock-draft-lobby leagues work — the league must be public).
       </p>
       ${
         recents.length
@@ -115,6 +118,18 @@ function renderHome() {
 async function resolveAndGo(raw) {
   let v = (raw || "").trim();
   if (!v) throw new Error("Enter something first.");
+
+  // ESPN: a draft/lobby/waitingroom link (…?leagueId=NNN&teamId=N), or a short
+  // "espn 205412306 4". teamId is optional; it just pre-selects your team.
+  const espnUrl = /espn\.com\/.*[?&]leagueid=(\d+)/i.exec(v);
+  const espnShort = /^espn[\s:/]+(\d+)(?:[\s:/]+(\d+))?$/i.exec(v);
+  if (espnUrl || espnShort) {
+    const league = (espnUrl || espnShort)[1];
+    const team = espnUrl
+      ? (/[?&]teamid=(\d+)/i.exec(v) || [])[1]
+      : espnShort[2];
+    return go(`espn_${league}${team ? `_${team}` : ""}`);
+  }
 
   const urlMatch =
     v.match(/draft\/(?:nfl\/)?(\d{5,25})/i) || v.match(/leagues?\/(\d{5,25})/i);
@@ -186,9 +201,37 @@ function renderLeaguePicker(user, leagues) {
 }
 
 // ---------------------------------------------------------------- draft room
+// draftId is the hash token: a bare Sleeper id, or `espn_<leagueId>[_<teamId>]`.
+function espnSource(leagueId) {
+  // One league fetch carries picks + settings + teams; memo it briefly so a
+  // poll cycle's getDraft() + getDraftPicks() share a single request.
+  let inflight = null;
+  let at = 0;
+  const raw = () => {
+    if (!inflight || Date.now() - at > 2000) {
+      at = Date.now();
+      inflight = espn.getLeagueRaw(leagueId);
+    }
+    return inflight;
+  };
+  return {
+    getDraft: async () => espn.toDraft(await raw(), leagueId),
+    getDraftPicks: async () => espn.toPicks(await raw()),
+  };
+}
+const sleeperSource = (id) => ({
+  getDraft: () => api.getDraft(id),
+  getDraftPicks: () => api.getDraftPicks(id),
+});
+
 function renderDraftRoom(draftId) {
+  const espnM = /^espn_(\d+)(?:_(\d+))?$/.exec(draftId);
   const S = {
     draftId,
+    platform: espnM ? "espn" : "sleeper",
+    espnLeagueId: espnM ? espnM[1] : null,
+    espnTeamId: espnM && espnM[2] ? Number(espnM[2]) : null,
+    src: espnM ? espnSource(espnM[1]) : sleeperSource(draftId),
     draft: null,
     picks: [],
     players: {},
@@ -208,6 +251,11 @@ function renderDraftRoom(draftId) {
     lastUpdated: 0,
     timer: null,
   };
+  // ESPN draft links carry your teamId — pre-select it the first time in.
+  if (S.platform === "espn" && S.espnTeamId != null && S.youRoster == null) {
+    S.youRoster = S.espnTeamId;
+    saveYou(draftId, S.youRoster);
+  }
 
   app.innerHTML = `<p class="muted"><span class="spin"></span> Loading draft ${esc(draftId)}…</p>`;
   topnav.innerHTML = `<button id="refreshPlayers" title="Re-download the player list">↻ players</button><a href="#/">＋ New</a>`;
@@ -215,11 +263,15 @@ function renderDraftRoom(draftId) {
     const b = e.currentTarget;
     b.disabled = true;
     b.innerHTML = '<span class="spin"></span>';
-    clearPlayerCache();
     try {
-      const env = await loadPlayers({ force: true });
-      S.players = env.players;
-      renderAvailable(S);
+      if (S.platform === "espn") {
+        espn.clearEspnPlayerCache(S.espnLeagueId);
+        S.players = await espn.loadEspnPlayers(S.espnLeagueId, { force: true });
+      } else {
+        clearPlayerCache();
+        S.players = (await loadPlayers({ force: true })).players;
+      }
+      renderLeftPanel(S);
       renderPicks(S);
       if (S.showBoard) renderBoard(S);
     } finally {
@@ -262,10 +314,15 @@ function saveYou(draftId, rosterId) {
 }
 
 async function bootstrap(S) {
-  const [draft, playersEnv] = await Promise.all([api.getDraft(S.draftId), loadPlayers()]);
+  const [draft, players] = await Promise.all([
+    S.src.getDraft(),
+    S.platform === "espn"
+      ? espn.loadEspnPlayers(S.espnLeagueId)
+      : loadPlayers().then((env) => env.players),
+  ]);
   if (!draft || !draft.draft_id) throw new Error(`No draft with ID ${S.draftId}.`);
   S.draft = draft;
-  S.players = playersEnv.players;
+  S.players = players;
 
   S.numTeams =
     draft.settings?.teams ||
@@ -314,9 +371,11 @@ async function bootstrap(S) {
     S.teamByRoster.set(r.roster_id, nameForUser(r.owner_id) || `Roster ${r.roster_id}`);
   }
   const slotByUser = draft.draft_order || {};
+  const slotLabels = draft.slot_labels || {}; // ESPN gives team names straight up
   for (let slot = 1; slot <= S.numTeams; slot++) {
     const rid = S.slotToRoster.get(slot);
     let label = rid != null ? S.teamByRoster.get(rid) : null;
+    if (!label) label = slotLabels[slot] || null;
     if (!label) {
       const uid = Object.keys(slotByUser).find((k) => slotByUser[k] === slot);
       if (uid) label = nameForUser(uid);
@@ -374,11 +433,12 @@ function paintShell(S) {
 
   app.innerHTML = `
     <div class="dhead">
-      <h1>${esc(d.metadata?.name || "Sleeper Draft")}</h1>
+      <h1>${esc(d.metadata?.name || "Draft")}</h1>
       <span class="badge ${statusCls}">${esc(d.status)}</span>
+      <span class="badge">${esc(S.platform === "espn" ? "ESPN" : "Sleeper")}</span>
       <span class="badge">${esc(typeLabel)}</span>
       <span class="badge">${S.numTeams} teams · ${S.rounds} rounds</span>
-      <span class="badge">ID ${esc(S.draftId)}</span>
+      <span class="badge">ID ${esc(S.platform === "espn" ? S.espnLeagueId : S.draftId)}</span>
     </div>
 
     <div class="controls">
@@ -406,8 +466,8 @@ function paintShell(S) {
 
     <div class="grid2">
       <section class="panel">
-        <h2>Available <span id="availCount" class="muted"></span></h2>
-        <div class="filters">
+        <h2 id="leftTitle">Available <span id="availCount" class="muted"></span></h2>
+        <div class="filters" id="availFilters">
           ${["ALL", ...POSITIONS]
             .map(
               (p) =>
@@ -416,7 +476,10 @@ function paintShell(S) {
             .join("")}
           <input id="search" placeholder="search name…" value="${esc(S.search)}" />
         </div>
-        <div class="body"><ul class="list" id="availList"></ul></div>
+        <div class="body">
+          <ul class="list" id="availList"></ul>
+          <ul class="list" id="myPicksList" style="display:none"></ul>
+        </div>
       </section>
 
       <div>
@@ -461,6 +524,7 @@ function paintShell(S) {
     S.youRoster = e.target.value === "" ? null : Number(e.target.value);
     saveYou(S.draftId, S.youRoster);
     renderClock(S);
+    renderLeftPanel(S);
     renderNeeds(S);
     renderBoard(S);
   });
@@ -738,8 +802,8 @@ async function refreshDynamic(S) {
     // Settle independently: a flaky /draft call shouldn't wipe out a good /picks
     // result (or vice-versa) and make the room "jump" between states.
     const [picksR, draftR] = await Promise.allSettled([
-      api.getDraftPicks(S.draftId),
-      api.getDraft(S.draftId),
+      S.src.getDraftPicks(),
+      S.src.getDraft(),
     ]);
     if (picksR.status === "rejected" && draftR.status === "rejected") {
       const u = document.getElementById("updated");
@@ -760,7 +824,7 @@ async function refreshDynamic(S) {
     }
     S.lastUpdated = Date.now();
     renderClock(S);
-    renderAvailable(S);
+    renderLeftPanel(S);
     renderPicks(S);
     renderNeeds(S);
     if (S.showBoard) renderBoard(S);
@@ -845,6 +909,50 @@ function renderClock(S) {
     }</div>
     ${next.length ? `<div class="next">On deck: ${next.map(esc).join(" → ")}</div>` : ""}
     ${youLine}`;
+}
+
+// Left panel is either the "Available" pool or — once you've picked your team —
+// "Your picks" in draft order. Same slot, swapped contents.
+function renderLeftPanel(S) {
+  const title = document.getElementById("leftTitle");
+  const filters = document.getElementById("availFilters");
+  const availUl = document.getElementById("availList");
+  const mineUl = document.getElementById("myPicksList");
+  if (!title || !availUl || !mineUl) return;
+
+  const showMine = S.youRoster != null;
+  filters.style.display = showMine ? "none" : "";
+  availUl.style.display = showMine ? "none" : "";
+  mineUl.style.display = showMine ? "" : "none";
+  // firstChild is the bare text node before the <span id="availCount">.
+  title.firstChild.textContent = showMine ? "Your picks " : "Available ";
+
+  if (showMine) renderMyPicks(S);
+  else renderAvailable(S);
+}
+
+function renderMyPicks(S) {
+  const ul = document.getElementById("myPicksList");
+  if (!ul) return;
+  const mine = S.picks
+    .filter((p) => isMyPick(S, p))
+    .slice()
+    .sort((a, b) => a.pick_no - b.pick_no);
+  const count = document.getElementById("availCount");
+  if (count) count.textContent = `(${mine.length})`;
+  ul.innerHTML =
+    mine
+      .map((pk) => {
+        const info = playerName(S, pk);
+        return `<li>
+          <span class="pick-no">${pk.round}.${String(pk.draft_slot).padStart(2, "0")}</span>
+          <span class="pname">${esc(info.name)}</span>
+          ${posPill(info.pos)}
+          <span class="pmeta">${esc(info.team || "")}</span>
+        </li>`;
+      })
+      .join("") ||
+    `<li class="muted" style="padding:14px">No picks yet — your selections show up here in draft order.</li>`;
 }
 
 function renderAvailable(S) {

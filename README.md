@@ -9,8 +9,9 @@ No login, no API key, no third-party hosting. See
 [Auth](#auth--does-any-of-this-need-a-key) below.
 
 There's also a **[static web app](#web-app)** in [`web/`](./web) — a browser draft
-room (paste a draft ID → live picks / available players / whose turn / roster
-needs) that talks to Sleeper directly and deploys to GitHub Pages.
+room (paste a Sleeper draft ID or an ESPN draft link → live picks / available
+players / whose turn / roster needs) that talks to Sleeper and ESPN directly and
+deploys to GitHub Pages.
 
 ## Requirements
 
@@ -131,17 +132,21 @@ SLEEPER_USER=your_username SLEEPER_DRAFT=some_draft_id node smoke.mjs dist/serve
 ## Web app
 
 [`web/`](./web) is a **dependency-free static site** (vanilla ES modules, no build
-step). It calls the Sleeper API straight from the browser — Sleeper sends
-`access-control-allow-origin: *`, so no proxy or server is needed.
+step). It calls the Sleeper and ESPN read APIs straight from the browser — both
+send permissive CORS headers, so no proxy or server is needed.
 
-- **Home** — one input. Paste a **draft ID**, a **league ID**, a **username**, or
-  a `sleeper.com/draft/…` URL. Numeric input is tried as a draft, then as a
-  league; a username lists that user's leagues to pick from.
-- **Draft room** (`#/draft/<id>`):
+- **Home** — one input. Paste a **Sleeper** draft ID / league ID / username, a
+  `sleeper.com/draft/…` URL, or an **ESPN** draft link
+  (`fantasy.espn.com/football/draft?leagueId=…&teamId=…`, mock-draft-lobby
+  leagues included — the league must be public). Sleeper numeric input is tried
+  as a draft, then as a league; a username lists that user's leagues to pick from.
+- **Draft room** (`#/draft/<id>`, or `#/draft/espn_<leagueId>_<teamId>`):
   - **On the clock** banner — team, round/pick, on-deck, and (once you pick your
     team) "your next pick is N away". Snake / linear / 3RR aware.
   - **Available players** — trimmed player list minus picks, sorted by
-    `search_rank`, with position chips + name search.
+    `search_rank` (ESPN: PPR draft rank), with position chips + name search.
+    Once you've picked your team this panel switches to **Your picks**, listed in
+    draft order.
   - **Recent picks** — reverse-chronological, your picks highlighted.
   - **Your roster & needs** — counts by position vs. the league's required
     starters (FLEX/SUPER_FLEX/REC_FLEX aware).
@@ -150,7 +155,9 @@ step). It calls the Sleeper API straight from the browser — Sleeper sends
     cache-busted so Sleeper's CDN can't serve a stale/empty pick list.
 - Player dictionary (~5 MB) is fetched once, trimmed to fantasy-relevant players
   (~tens of KB), and cached in `localStorage` for 24h. "↻ players" forces a
-  refresh. "You are" and recent drafts also persist in `localStorage`.
+  refresh. "You are" and recent drafts also persist in `localStorage`. For ESPN
+  drafts the pool is ESPN's top ~400 by PPR draft rank (via `kona_player_info`),
+  cached per league for 6h.
 
 ### AI pick suggestions (optional, bring-your-own-key)
 

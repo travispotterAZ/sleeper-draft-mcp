@@ -11,7 +11,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "node --experimental-strip-types src/server.ts",
-    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\" && node web-tests/logic.mjs && node web-tests/render.mjs"
+    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\" && node web-tests/logic.mjs && node web-tests/espn.mjs && node web-tests/render.mjs"
   },
   "keywords": [
     "mcp",
