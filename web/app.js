@@ -219,10 +219,12 @@ function espnSource(leagueId) {
     getDraftPicks: async () => espn.toPicks(await raw()),
   };
 }
-const sleeperSource = (id) => ({
-  getDraft: () => api.getDraft(id),
-  getDraftPicks: () => api.getDraftPicks(id),
-});
+function sleeperSource(id) {
+  return {
+    getDraft: () => api.getDraft(id),
+    getDraftPicks: () => api.getDraftPicks(id),
+  };
+}
 
 function renderDraftRoom(draftId) {
   const espnM = /^espn_(\d+)(?:_(\d+))?$/.exec(draftId);
